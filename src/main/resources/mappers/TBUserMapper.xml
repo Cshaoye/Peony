@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd" >
+<mapper namespace="com.shaoye.dao.TBUserDao">
+	<resultMap id="userMap" type="com.shaoye.pojo.TBUser">
+		<id column="ID" property="id" />
+		<result column="CHANNEL" property="channel" />
+		<result column="ClientCode" property="clientCode" />
+		<result column="EMAIL" property="email" />
+		<result column="EMPLOYEEID" property="employeeId" />
+		<result column="ENABLED" property="enabled" />
+		<result column="ENTERPRISE" property="enterprise" />
+		<result column="GROUPID" property="grouptId" />
+		<result column="IDNUMBER" property="idNumber" />
+		<result column="LOGINNAME" property="loginname" />
+		<result column="MOBILE" property="mobile" />
+		<result column="NAME" property="name" />
+		<result column="PASSPHRASE" property="passphrase" />
+		<result column="SALT" property="salt" />
+		<result column="SOURCE" property="source" />
+		<result column="REFERRAL_ID" property="referralId" />
+		<result column="REFERRAL_REALM" property="referralRealm" />
+	</resultMap>
+	<!-- 插入一条记录 使用数据库设定的自增id useGeneratedKeys="true" keyProperty="id" -->
+	<insert id="addTBUser" parameterType="com.shaoye.pojo.TBUser"
+		flushCache="true" statementType="PREPARED" useGeneratedKeys="true"
+		keyProperty="id">
+		insert into TB_USER(id,username,password)
+		values
+		(NULL,#{username},#{password})
+	</insert>
+	<!-- 修改用户密码 -->
+	<update id="updateTBUserMobileAndIdNumber" parameterType="com.shaoye.pojo.TBUser">
+		UPDATE TB_USER
+		SET
+		MOBILE=#{mobile},
+		IDNUMBER=#{idNumber}
+		WHERE ID=#{id}
+	</update>
+	<!-- 批量修改所有用户的密码 -->
+	<update id="batchUpdateTBUser" parameterType="java.util.List">
+		<foreach collection="list" item="item" index="index" open=""
+			close="" separator=";">
+			UPDATE TB_USER
+			<set>
+				MOBILE=${item.mobile},
+				IDNUMBER=${item.idNumber}
+			</set>
+			where ID = ${item.id}
+		</foreach>
+	</update>
+	<!-- 查询所有的用户 -->
+	<select id="getAllTBUser" resultMap="userMap">
+		SELECT * From TB_USER
+	</select>
+	<select id="getTBUserById" resultMap="userMap">
+		SELECT * from TB_USER where
+		ID=#{id}
+	</select>
+	<!-- 删除用户 -->
+	<delete id="deleteTBUserById" parameterType="int">
+		DELETE FROM TB_USER
+		WHERE id=#{id}
+	</delete>
+</mapper>

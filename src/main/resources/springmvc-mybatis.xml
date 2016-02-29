@@ -1,0 +1,130 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:p="http://www.springframework.org/schema/p"
+	xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:mvc="http://www.springframework.org/schema/mvc" xmlns:aop="http://www.springframework.org/schema/aop"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans  
+                        http://www.springframework.org/schema/beans/spring-beans-3.1.xsd  
+                        http://www.springframework.org/schema/context  
+                        http://www.springframework.org/schema/context/spring-context-3.1.xsd  
+                        http://www.springframework.org/schema/mvc  
+                        http://www.springframework.org/schema/mvc/spring-mvc-4.0.xsd
+                        http://www.springframework.org/schema/aop
+                    	http://www.springframework.org/schema/aop/spring-aop-4.0.xsd
+                        ">
+	<!-- 自动扫描 -->
+	<context:component-scan base-package="com.shaoye" />
+	<!-- 使用annotation 自动注册bean, 并保证@Required、@Autowired的属性被注入 -->
+	<!-- <context:component-scan base-package="com.shaoye"> <context:exclude-filter 
+		type="annotation" expression="org.springframework.stereotype.Controller" 
+		/> </context:component-scan> -->
+	<!-- 数据源配置,使用应用内的DBCP数据库连接池 -->
+	<bean id="parentDataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		init-method="init" destroy-method="close">
+		<!-- 配置驱动源 -->
+		<property name="driverClassName" value="${jdbc.driver}"></property>
+		<!-- 配置获取连接等待超时的时间 -->
+		<property name="maxWait" value="${db.maxWait}" />
+		<!-- 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒 -->
+		<property name="timeBetweenEvictionRunsMillis" value="${db.timeBetweenEvictionRunsMillis}" />
+		<!-- 配置一个连接在池中最小生存的时间，单位是毫秒 -->
+		<property name="minEvictableIdleTimeMillis" value="${db.minEvictableIdleTimeMillis}" />
+
+		<property name="validationQuery" value="SELECT 1 from dual" />
+		<property name="testWhileIdle" value="true" />
+		<property name="testOnBorrow" value="false" />
+		<property name="testOnReturn" value="false" />
+		<!-- 打开PSCache，并且指定每个连接上PSCache的大小 -->
+		<property name="poolPreparedStatements" value="${db.poolPreparedStatements}" />
+		<property name="maxPoolPreparedStatementPerConnectionSize"
+			value="${db.maxPoolPreparedStatementPerConnectionSize}" />
+	</bean>
+
+	<!-- 主数据源（写库） -->
+	<bean id="masterDataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		parent="parentDataSource">
+		<property name="url" value="${master.db.jdbcUrl}" />
+		<property name="username" value="${master.db.user}" />
+		<property name="password" value="${master.db.password}" />
+		<!-- 配置初始化大小、最小、最大 -->
+		<property name="initialSize" value="${master.db.initialSize}" />
+		<property name="minIdle" value="${master.db.minIdle}" />
+		<property name="maxActive" value="${master.db.maxActive}" />
+	</bean>
+	<!-- 从数据源（读库） -->
+	<bean id="slaveDataSource" class="com.alibaba.druid.pool.DruidDataSource"
+		parent="parentDataSource">
+		<property name="url" value="${slave.db.jdbcUrl}" />
+		<property name="username" value="${slave.db.user}" />
+		<property name="password" value="${slave.db.password}" />
+		<!-- 配置初始化大小、最小、最大 -->
+		<property name="initialSize" value="${slave.db.initialSize}" />
+		<property name="minIdle" value="${slave.db.minIdle}" />
+		<property name="maxActive" value="${slave.db.maxActive}" />
+	</bean>
+	<!-- 配置多个数据源，默认为master数据源 -->
+	<bean id="dataSource" class="com.shaoye.aop.db.DynamicDataSource">
+		<property name="targetDataSources">
+			<map key-type="java.lang.String">
+				<entry key="slave" value-ref="slaveDataSource" />
+			</map>
+		</property>
+		<!-- 默认目标数据源为你主库数据源 -->
+		<property name="defaultTargetDataSource" ref="masterDataSource" />
+	</bean>
+	<!-- spring和MyBatis完美整合，不需要mybatis的配置映射文件 -->
+	<bean id="sqlSessionFactory" class="org.mybatis.spring.SqlSessionFactoryBean">
+		<property name="dataSource" ref="dataSource" />
+		<!-- 自动扫描mapping.xml文件 -->
+		<property name="mapperLocations" value="classpath*:mappers/*Mapper.xml"></property>
+	</bean>
+
+	<!-- DAO接口所在包名，Spring会自动查找其下的类 -->
+	<bean class="org.mybatis.spring.mapper.MapperScannerConfigurer">
+		<property name="basePackage" value="com.shaoye.dao" />
+		<property name="sqlSessionFactoryBeanName" value="sqlSessionFactory"></property>
+	</bean>
+
+	<bean id="transactionManager"
+		class="org.springframework.jdbc.datasource.DataSourceTransactionManager">
+		<property name="dataSource" ref="dataSource" />
+	</bean>
+
+	<bean id="dataSourceAdvice" class="com.shaoye.aop.db.DataSourceAdvice">
+		<property name="slaveMethods">
+			<list>
+				<value>query</value>
+				<value>list</value>
+				<value>load</value>
+				<value>find</value>
+				<value>get</value>
+				<value>select</value>
+				<value>count</value>
+				<value>exists</value>
+			</list>
+		</property>
+	</bean>
+	<bean id="logAspectBean" class="com.shaoye.aop.interceptor.LogAspect" />
+	<aop:config proxy-target-class="false">
+		<aop:aspect id="dbAspect" ref="dataSourceAdvice" order="1">
+			<aop:pointcut id="allMethod"
+				expression="execution(* com.shaoye.service.*.*(..))" />
+			<aop:before method="before" pointcut-ref="allMethod" />
+			<aop:after-returning method="afterReturn"
+				pointcut-ref="allMethod" />
+			<aop:after method="after" pointcut-ref="allMethod" />
+			<aop:after-throwing method="afterThrowing"
+				pointcut-ref="allMethod" />
+		</aop:aspect>
+		<aop:aspect id="logAspect" ref="logAspectBean" order="2">
+			<aop:pointcut id="allMethod"
+				expression="execution(* com.shaoye.service.*.*(..))" />
+			<aop:before method="before" pointcut-ref="allMethod" />
+			<aop:after-returning method="afterReturn"
+				pointcut-ref="allMethod" />
+			<aop:after method="after" pointcut-ref="allMethod" />
+			<aop:after-throwing method="afterThrowing"
+				pointcut-ref="allMethod" />
+		</aop:aspect>
+	</aop:config>
+</beans>
